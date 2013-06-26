@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"launchpad.net/goamz/aws"
 	"launchpad.net/goamz/s3"
@@ -172,6 +173,20 @@ func (s *Site) read() error {
 				s.posts = append([]Page{post}, s.posts...) //s.posts, post)
 			}
 
+			// Parse section a section has the characteristic that a page repeats as many pages as there are news.
+		case isSection(rel):
+			_, err := ParsePage(rel)
+			if err != nil {
+				return err
+			}
+			//fmt.Println("si es seccion", rel)
+			for i := 0; i < 10; i++ {
+				new_page, _ := ParsePage(rel)
+				new_page.Set("current_page", i)
+				new_page.Set("url", removeExt(new_page.GetUrl())+fmt.Sprintf("%d", i)+".html")
+				s.pages = append(s.pages, new_page)
+			}
+
 		// Parse Pages
 		case isPage(rel):
 			page, err := ParsePage(rel)
@@ -211,6 +226,7 @@ func (s *Site) read() error {
 	s.SetMinuteByMinute()
 	s.calculateAuthors()
 	s.getPostByAuthor()
+
 	return nil
 }
 
@@ -426,10 +442,70 @@ func (s *Site) PagesForCategory(cat string, max_pages int) []Page {
 	return cutArr(categories[cat], max_pages)
 }
 
+func (s *Site) PostPaginated(cat string, size, num int) []Page {
+	categories := s.Conf.Get("categories").(map[string][]Page)
+	return getPage(categories[cat], size, num)
+}
+
+func (s *Site) PrevPag(current_page int) (prev int) {
+	if current_page <= 0 {
+		prev = 0
+	} else {
+		prev = current_page - 1
+	}
+	return
+}
+
+func (s *Site) NextPag(current_page int, total_pages int) (next int) {
+	if current_page >= total_pages-1 {
+		next = total_pages - 1
+	} else {
+		next = current_page + 1
+	}
+	return
+}
+
+func (s *Site) TotalPages(cat string, size int) []int {
+	categories := s.Conf.Get("categories").(map[string][]Page)
+	t := totalPages(categories[cat], size)
+	result := make([]int, t)
+	return result
+}
+
+func (s *Site) TotPag(cat string, size int) (t int) {
+	categories := s.Conf.Get("categories").(map[string][]Page)
+	t = totalPages(categories[cat], size)
+
+	return t
+}
+
 func cutArr(news []Page, max_post int) []Page {
 	if len(news) < max_post {
 		max_post = len(news)
 	}
 	return news[:max_post]
 
+}
+
+func getPage(category []Page, size, num int) []Page {
+	if num < 0 || size < 0 {
+		panic("el num de pagina no puede ser negativo")
+	}
+
+	lim_inf := size * num
+	if lim_inf > len(category) {
+		lim_inf = len(category)
+		//panic("estas pidiendo una pagina mayor al rango disponible")
+	}
+
+	lim_sup := size * (num + 1)
+	if lim_sup > len(category) {
+		lim_sup = len(category)
+	}
+
+	return category[lim_inf:lim_sup]
+}
+
+func totalPages(category []Page, size int) int {
+	return len(category) / size
 }
